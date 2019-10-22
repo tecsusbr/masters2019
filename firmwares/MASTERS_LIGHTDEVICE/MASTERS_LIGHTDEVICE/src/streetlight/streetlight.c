@@ -36,10 +36,14 @@ static void ReconnectionIndication (miwi_status_t status);
 
 static void appDataInd(RECEIVED_MESH_MESSAGE *ind)
 {
-	AppPacket_t *msg = (AppPacket_t *)ind->payload;
+	AppPacket_t *msg = (AppPacket_t *) ind->payload;
 	
 	// Received data!
 	// Your code Here.
+	if (msg->unique_id == UNIQUE_ID || msg->unique_id == 99)
+	{
+		port_pin_set_output_level(LED0, !msg->light);
+	}
 }
 
 static void appDataSendingTimerHandler(SYS_Timer_t *timer)
@@ -61,11 +65,15 @@ static void appDataConf(uint8_t msgConfHandle, miwi_status_t status, uint8_t* ms
 	// Your code here!
 	if (SUCCESS == status)
 	{
-
+		#ifdef DEBUG
+			printf("Enviado com sucesso!\r\n");
+		#endif
 	}
 	else
 	{
-
+		#ifdef DEBUG
+			printf("Nao enviado!\r\n");
+		#endif
 	}
 
 	if (APP_STATE_WAIT_CONF == appState)
@@ -80,14 +88,21 @@ static void appSendData(void)
 	// Your code here
 	// Mount packet to send
 	appMsg.packet_type = PACKET_DATA;
+	appMsg.unique_id = UNIQUE_ID;
+	appMsg.hum = (PHY_RandomReq() / 10) + 20;
+	appMsg.temp = (PHY_RandomReq() / 10) + 20;
+	appMsg.light = port_pin_get_output_level(LED0);
+	MiApp_Get(PARENT_SHORT_ADDRESS, &appMsg.parent_addr);
+	MiApp_Get(SHORT_ADDRESS, &appMsg.short_addr);
 
-	if (MiApp_SendData(2, (uint8_t *)&dstAddr, sizeof(appMsg), (uint8_t *)&appMsg, wsnmsghandle, true, appDataConf))
+	if (MiApp_SendData(2, (uint8_t *)&dstAddr, sizeof(appMsg), (uint8_t *) &appMsg, wsnmsghandle, true, appDataConf))
 	{
 		++wsnmsghandle;
 		appState = APP_STATE_WAIT_CONF;
 	}
 	else
 	{
+		// To passando reto. Da proxima vez eu tento;
 		appState = APP_STATE_SENDING_DONE;
 	}
 }
@@ -97,8 +112,11 @@ static void appInit(void)
 	appDataSendingTimer.interval = APP_SENDING_INTERVAL;
 	appDataSendingTimer.mode = SYS_TIMER_INTERVAL_MODE;
 	appDataSendingTimer.handler = appDataSendingTimerHandler;
-
+	
+	// Setando a funcao que recebe os dados;
 	MiApp_SubscribeDataIndicationCallback(appDataInd);
+	
+	// Funcao que sera chamada ao perder a conexao;
 	MiApp_SubscribeLinkFailureCallback(appLinkFailureCallback);
 
 	if (appState == APP_STATE_RECONNECT_SUCCESS)
